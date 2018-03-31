@@ -10,16 +10,19 @@
 char *
 irc_sasl_mechanism_ecdsa_nist256p_challenge_delegated (const char *,
                                                        const char *,
+                                                       const char *,
                                                        const char *);
 
 
 int main(void) {
-    const char *sasl_agent  = "python agent.py";
-    const char *sasl_key    = "user";
-    const char *data_base64 = "challenge";
+    const char *sasl_agent    = "python ecdsa_nist256p_challenge.py";
+    const char *sasl_username = "username";
+    const char *sasl_key      = "key.pem";
+    const char *data_base64   = "bbbbbbbb";
 
     char *response;
     response = irc_sasl_mechanism_ecdsa_nist256p_challenge_delegated (sasl_agent,
+                                                                      sasl_username,
                                                                       sasl_key,
                                                                       data_base64);
     printf("response:\n\t\"%s\"\n", response);
@@ -28,6 +31,7 @@ int main(void) {
 
 char *
 irc_sasl_mechanism_ecdsa_nist256p_challenge_delegated (const char *sasl_agent,
+                                                       const char *sasl_username,
                                                        const char *sasl_key,
                                                        const char *data_base64)
 {
@@ -36,15 +40,19 @@ irc_sasl_mechanism_ecdsa_nist256p_challenge_delegated (const char *sasl_agent,
     FILE *fp;
 
     /* construct command string */
-    command_len = strlen (sasl_agent) + strlen (sasl_key) + strlen (data_base64) + 3;
+    command_len = strlen (sasl_agent) + strlen (sasl_username) +
+        strlen (sasl_key) + strlen (data_base64) + 4;
     command = malloc (command_len);
-    len = snprintf (command, command_len, "%s %s %s", sasl_agent, sasl_key, data_base64);
+    len = snprintf (command, command_len, "%s %s %s %s", sasl_agent,
+                    sasl_username, sasl_key, data_base64);
     if (len > command_len)
     {
         printf ("[error] failed to construct delegation command");
         free (command);
         return NULL;
     }
+
+    printf("command: %s\n", command);
 
     /* start an agent program and open pipe to its STDOUT */
     if ((fp = popen (command, "r")) == NULL)
@@ -56,7 +64,7 @@ irc_sasl_mechanism_ecdsa_nist256p_challenge_delegated (const char *sasl_agent,
 
     /* allocate response buffer and read agent's output to it */
     /* TODO: somehow get signature length */
-    response_len = 32;
+    response_len = 128;
     response = malloc (response_len);
     fgets (response, response_len, fp);
 
