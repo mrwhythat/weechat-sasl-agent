@@ -26,10 +26,9 @@ def ledger_challenge(username, keyid, challenge):
         answer = username_bytes + b'|' + username_bytes
     else:
         data = base64.b64decode(challenge)
-        identity = Identity('irc://{}@{}'.format(username, keyid), 'NIST256P')
-        device = Device()
-        device.connect()
-        answer = device.sign(identity, data)
+        identity = Identity('irc://{}@{}'.format(username, keyid), 'nist256p1')
+        with Device() as device:
+            answer = device.sign(identity, data)
     return base64.b64encode(answer).decode('ascii')
 
 
@@ -37,10 +36,9 @@ def ledger_pubkey(username, keyid):
     """
     Connect to a device and get a public key for a given identity
     """
-    identity = Identity('irc://{}@{}'.format(username, keyid), 'NIST256P')
-    device = Device()
-    device.connect()
-    return base64.b64encode(device.pubkey(identity)).decode('ascii')
+    identity = Identity('irc://{}@{}'.format(username, keyid), 'nist256p1')
+    with Device() as device:
+        return base64.b64encode(device.pubkey(identity)).decode('ascii')
 
 
 def main(args):
