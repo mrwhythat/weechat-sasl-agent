@@ -8,12 +8,37 @@
 import sys
 import base64
 
-from libagent.device.ledger import LedgerNanoS as Device
 # from libagent.device.fake_device import FakeDevice as Device
-from libagent.device.interface import Identity
+from ledgerblue.comm import getDongle
 
 
-def ledger_challenge(username, keyid, challenge):
+class LedgerInterface:
+    def __init__(self):
+        self.conn = None
+
+    def __enter__(self):
+        self.conn = getDongle()
+        return self
+
+    def __exit__(self):
+        self.conn.close()
+
+    def __identity(self, username, keyid):
+        pass
+
+    def pubkey(self, username, keyid):
+        pass
+
+    def sign(self, identity, challenge):
+        pass
+
+
+def identity(username, keyid):
+    """Expand username and keyid into key path for Ledger dongle."""
+    pass
+
+
+def sasl_nist256p_sign(username, keyid, challenge):
     """
     Compute NIST256P signature over the given challenge data
 
@@ -26,19 +51,17 @@ def ledger_challenge(username, keyid, challenge):
         answer = username_bytes + b'|' + username_bytes
     else:
         data = base64.b64decode(challenge)
-        identity = Identity('irc://{}@{}'.format(username, keyid), 'nist256p1')
-        with Device() as device:
-            answer = device.sign(identity, data)
+        with LedgerInterface() as ledger:
+            answer = ledger.sign(username, keyid, data)
     return base64.b64encode(answer).decode('ascii')
 
 
-def ledger_pubkey(username, keyid):
+def sasl_nist256p_pubkey(username, keyid):
     """
     Connect to a device and get a public key for a given identity
     """
-    identity = Identity('irc://{}@{}'.format(username, keyid), 'nist256p1')
-    with Device() as device:
-        return base64.b64encode(device.pubkey(identity)).decode('ascii')
+    with LedgerInterface() as ledger:
+        return ledger.pubkey(username, keyid)
 
 
 def main(args):
@@ -58,10 +81,10 @@ def main(args):
     elif len(args) == 3:
         # hidden undocumented hacky hack for extracting public key
         username, keyid = args[1], args[2]
-        print(ledger_pubkey(username, keyid))
+        print(sasl_nist256p_pubkey(username, keyid))
     elif len(args) == 4:
         username, keyid, challenge = args[1], args[2], args[3]
-        print(ledger_challenge(username, keyid, challenge))
+        print(sasl_nist256p_sign(username, keyid, challenge))
     else:
         print('')
 
