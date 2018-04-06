@@ -7,8 +7,9 @@
 
 import sys
 import base64
+import struct
 
-# from libagent.device.fake_device import FakeDevice as Device
+from libagent.device.interface import Identity
 from ledgerblue.comm import getDongle
 
 
@@ -20,22 +21,57 @@ class LedgerInterface:
         self.conn = getDongle()
         return self
 
-    def __exit__(self):
+    def __exit__(self, *args):
         self.conn.close()
 
     def __identity(self, username, keyid):
-        pass
+        """Expand username and keyid into SLIP-0013/0017 identity object."""
+        idn = Identity('irc://{}@{}'.format(username, keyid), '')
+        return b''.join(struct.pack('>I', e) for e in idn.get_bip32_address())
 
     def pubkey(self, username, keyid):
-        pass
+        """
+        Extract public key for given username/keyid.
 
-    def sign(self, identity, challenge):
-        pass
+        Extraction is done by sending APDU request:
+            INS = 0x02 - return public key;
+            P1  = 0x00 - mark APDU as first frame;
+            P2  = 0x01 - select NIST256P curve.
+        """
+        path = self.__identity(username, keyid)
+        datalen = bytes([len(path) + 1, len(path) // 4])
+        hdr, ins, p1, p2 = b'\x80', b'\x02', b'\x00', b'\x01'
+        apdu = hdr + ins + p1 + p2 + datalen + path
+        response = self.conn.exchange(apdu)[1:]
+        pref = b'\x03' if (response[64] & 1) != 0 else b'\x02'
+        return pref + response[1:33]
 
+    def sign(self, username, keyid, challenge):
+        """
+        Sign challenge data with key, selected by expanding username/keyid.
 
-def identity(username, keyid):
-    """Expand username and keyid into key path for Ledger dongle."""
-    pass
+        Signing is done be sending APDU request:
+            INS = 0x06 - sign generic hash;
+            P1  = 0x80 - mark APDU as last frame;
+            P2  = 0x01 - select NIST256P curve.
+        """
+        path = self.__identity(username, keyid)
+        datalen = bytes([len(path) + len(challenge) + 1, len(path) // 4])
+        hdr, ins, p1, p2 = b'\x80', b'\x06', b'\x80', b'\x01'
+        apdu = hdr + ins + p1 + p2 + datalen + path + challenge
+        response = self.conn.exchange(apdu)
+        # decode (R, S) values for resulting signature (from trezor-agent)
+        offset = 3
+        length = response[offset]
+        r = response[offset + 1:offset + 1 + length]
+        if r[0] == 0:
+            r = r[1:]
+        offset = offset + 1 + length + 1
+        length = response[offset]
+        s = response[offset + 1:offset + 1 + length]
+        if s[0] == 0:
+            s = s[1:]
+        return r + s
 
 
 def sasl_nist256p_sign(username, keyid, challenge):
@@ -61,7 +97,8 @@ def sasl_nist256p_pubkey(username, keyid):
     Connect to a device and get a public key for a given identity
     """
     with LedgerInterface() as ledger:
-        return ledger.pubkey(username, keyid)
+        answer = ledger.pubkey(username, keyid)
+    return base64.b64encode(answer).decode('ascii')
 
 
 def main(args):
